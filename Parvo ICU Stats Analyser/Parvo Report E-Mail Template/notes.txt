@@ -1,0 +1,13 @@
+#819e15
+#4d4d4d
+#edf3d6
+#a7c539
+#dd5928
+#d4dac0
+http://www.austinpetsalive.org/wp-content/themes/apa_v2/images/backgrounds/bg_header.png
+link hover #dd5928
+
+inline converter
+http://inlinestyler.torchboxapps.com/styler/convert/
+template maker
+https://self108.createsend.com/templates/

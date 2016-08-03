@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<link rel="shortcut icon" href="favicon.ico" />
+<title>Parvo ICU Result Normalized by Month</title>
+<meta charset="utf-8">
+
+<script src="d3.v3.min.js"></script>
+
+<style>
+	body {
+	  font: 10px sans-serif;
+	}
+
+	.axis path,
+	.axis line {
+	  fill: none;
+	  stroke: #000;
+	  shape-rendering: crispEdges;
+	}
+
+	.bar {
+	  fill: steelblue;
+	}
+
+	.x.axis path {
+	  display: none;
+	}
+
+	.legend line {
+	  stroke: #000;
+	  shape-rendering: crispEdges;
+	}
+	
+	.sexy-button {
+		-moz-box-shadow:inset 0px 1px 0px 0px #8394b3;
+		-webkit-box-shadow:inset 0px 1px 0px 0px #8394b3;
+		box-shadow:inset 0px 1px 0px 0px #8394b3;
+		background:-webkit-gradient( linear, left top, left bottom, color-stop(0.05, #6d8ae3), color-stop(1, #2263d4) );
+		background:-moz-linear-gradient( center top, #6d8ae3 5%, #2263d4 100% );
+		filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#6d8ae3', endColorstr='#2263d4');
+		background-color:#6d8ae3;
+		-moz-border-radius:6px;
+		-webkit-border-radius:6px;
+		border-radius:6px;
+		border:1px solid #516ec2;
+		display:inline-block;
+		color:#f0fbfd;
+		font-family:arial;
+		font-size:15px;
+		font-weight:bold;
+		padding:6px 24px;
+		text-decoration:none;
+		text-shadow:1px 1px 0px #2e3fab;
+	}
+	.sexy-button:hover {
+		background:-webkit-gradient( linear, left top, left bottom, color-stop(0.05, #2263d4), color-stop(1, #6d8ae3) );
+		background:-moz-linear-gradient( center top, #2263d4 5%, #6d8ae3 100% );
+		filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#2263d4', endColorstr='#6d8ae3');
+		background-color:#2263d4;
+		color:#d0dbed;
+	}
+	.sexy-button:active {
+		position:relative;
+		top:1px;
+	}
+</style>
+
+<body>
+
+<script>
+	function newFilledArray(len, val) {
+		var rv = new Array(len);
+		while (--len >= 0) {
+			rv[len] = val;
+		}
+		return rv;
+	}
+	var otherANums = new Array();
+	function generateMetaData(data)
+{
+	data.forEach(function (d)
+	{
+		if(d!=null&&d.DateOfBirth!=DOT_NET_DATETIME_MIN)
+		{
+			var idate = Date.parse(d.IntakeDateTime.replace("T", " "));
+			d.IntakeDateTime = idate;
+			if(!(d.OutcomeType=="Adoption"||d.OutcomeType=="Died"))
+				d.ProcessedOutcomeType="Other";
+			else
+				d.ProcessedOutcomeType=d.OutcomeType;
+			var found = false;
+			for(var i = 0; i < outcomeTypes.length;i++)
+				if(outcomeTypes[i]==d.ProcessedOutcomeType) found = true;
+			if(!found) outcomeTypes.push(d.ProcessedOutcomeType);
+			if((new Date(d.IntakeDateTime)).getYear()==112)
+			columnDataArray.push({date: d.IntakeDateTime, result: d.ProcessedOutcomeType});
+		}
+	});
+		
+	var maxDate = 0;
+	var minDate = 99999999999999999999
+	
+	for(var i = 0; i < columnDataArray.length;i++)
+	{
+		if(columnDataArray[i].date>maxDate) maxDate = columnDataArray[i].date;
+		if(columnDataArray[i].date<minDate) minDate = columnDataArray[i].date;
+	}
+	
+	columnDataArray.sort(function(b, a) { return b.date - a.date; });
+	
+	var firstDate = new Date(columnDataArray[0].date);
+	var firstMonth = firstDate.getYear()*12+firstDate.getUTCMonth();
+	var secondDate = new Date(columnDataArray[columnDataArray.length-1].date);
+	var numMonths = (secondDate.getYear()*12+secondDate.getUTCMonth())-firstMonth+1;
+		
+	var months = new Array();
+	var monthStrings = ["January","February","March","April","May","June","July","August","September","October","November", "December"];
+	for(var i = 0; i < numMonths;i++)
+	{
+		var currentMonth = firstDate.getYear()*12+firstDate.getUTCMonth();
+		months.push({monthNum: month, monthString: monthStrings[currentMonth-firstMonth], resultCounts: newFilledArray(outcomeTypes.length,0)});
+		firstDate.setMonth(firstDate.getUTCMonth()+1);
+	}
+		
+	for(var i = 0; i < columnDataArray.length;i++)
+	{
+		var date = (new Date(columnDataArray[i].date));
+		var month = date.getYear()*12+date.getUTCMonth()-firstMonth;
+		months[month].resultCounts[outcomeTypes.indexOf(columnDataArray[i].result)]++;
+	}
+	color.domain(d3.keys(outcomeTypes));
+	months.forEach(function(d) {
+		var y0 = 0;
+		d.results = color.domain().map(function(n) { 
+		return {resultString: outcomeTypes[n], y0: y0, y1: y0 += +d.resultCounts[n]}; });
+			d.results.forEach(function(d) { d.y0 /= y0; d.y1 /= y0; });
+		});
+		
+	return months;
+}
+
+	var windowPadding = { left: 10, top: 20};
+	var margin = {top: 20, right: 100, bottom: 30, left: 40},
+		width = window.innerWidth - windowPadding.left - margin.left - margin.right,
+		height = window.innerHeight - windowPadding.top - margin.top - margin.bottom;
+
+	var x = d3.scale.ordinal()
+		.rangeRoundBands([0, width], .1);
+
+	var y = d3.scale.linear()
+		.rangeRound([height, 0]);
+
+	var color = d3.scale.ordinal()
+		.range(["#98abc5", "#8a89a6", "#7b6888", "#6b486b", "#a05d56", "#d0743c", "#ff8c00"]);
+
+	var xAxis = d3.svg.axis()
+		.scale(x)
+		.orient("bottom");
+
+	var yAxis = d3.svg.axis()
+		.scale(y)
+		.orient("left")
+		.tickFormat(d3.format(".0%"));
+
+	var svg = d3.select("body").append("svg")
+		.attr("width", width + margin.left + margin.right)
+		.attr("height", height + margin.top + margin.bottom)
+			.append("g")
+				.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+		var MILLISECONDS_IN_A_DAY = 86400000;
+		var DOT_NET_DATETIME_MIN = "0001-01-01T00:00:00";
+		var columnDataArray = new Array();
+		var outcomeTypes = new Array();
+		
+		var originalData;
+		d3.json("test.json", function(error, data) {
+			originalData = data;
+
+			months = generateMetaData(data);
+
+			x.domain(months.map(function(d) { return d.monthString; }));
+
+			svg.append("g")
+				.attr("class", "x axis")
+				.attr("transform", "translate(0," + height + ")")
+				.call(xAxis);
+
+			svg.append("g")
+				.attr("class", "y axis")
+				.call(yAxis);
+
+			var month = svg.selectAll(".month")
+				.data(months)
+				.enter().append("g")
+					.attr("class", "month")
+					.attr("transform", function(d) { return "translate(" + x(d.monthString) + ",0)"; });
+
+			month.selectAll("rect")
+				.data(function(d) { return d.results; })
+				.enter().append("rect")
+					.attr("width", x.rangeBand())
+					.attr("y", function(d) { return y(d.y1); })
+					.attr("height", function(d) { return y(d.y0) - y(d.y1); })
+					.style("fill", function(d) { return color(d.resultString); });
+
+			var legend = svg.select(".month:last-child").selectAll(".legend")
+				.data(function(d) { return d.results; })
+				.enter().append("g")
+					.attr("class", "legend")
+					.attr("transform", function(d) { return "translate(" + (x.rangeBand() - windowPadding.left) + "," + y((d.y0 + d.y1) / 2) + ")"; });
+
+			legend.append("line")
+				.attr("x1", 0)
+				.attr("x2", 20);
+
+			legend.append("text")
+				.attr("x", 23)
+				.attr("dy", ".35em")
+				.text(function(d) { return d.resultString; });
+				
+			var rectangle = svg.append("rect")
+				.attr("x", 0)
+				.attr("y", height*0.91)
+				.attr("width", width)
+				.attr("height", height*0.09)
+				.attr("fill", "rgba(127,0,0,0.5)");
+			
+			svg.append("line")
+				.attr("x1", width-25)
+				.attr("x2", width+6)
+				.attr("y1", height*0.95)
+				.attr("y2", height*0.95)
+				.attr("stroke", "black");
+			
+			svg.append("text")
+				.attr("x", width+7)
+				.attr("y", height*0.95-3)
+				.text("Untreated");
+			
+			svg.append("text")
+				.attr("x", width+7)
+				.attr("y", height*0.95+6)
+				.text("Survival Rate");
+		});
+</script>

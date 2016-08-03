@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<link rel="shortcut icon" href="favicon.ico" />
+<title>Parvo ICU Dog Color</title>
+<meta charset="utf-8">
+
+<script src="d3.v3.min.js"></script>
+<script src="rgbcolor.js"></script>
+
+<style>
+body {
+  font: 10px sans-serif;
+}
+
+.arc path {
+  stroke: #fff;
+}
+</style>
+
+<body>
+
+<script>
+var width = window.innerWidth - 50,
+    height = window.innerHeight - 50,
+    radius = Math.min(width, height) / 2;
+
+var color = d3.scale.ordinal()
+    .range(["#98abc5", "#8a89a6", "#7b6888", "#6b486b", "#a05d56", "#d0743c", "#ff8c00"]);
+
+var arc = d3.svg.arc()
+    .outerRadius(radius - 10)
+    .innerRadius(radius*0.5);
+
+var pie = d3.layout.pie()
+    .sort(null)
+    .value(function(d) { return d.count; });
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height)
+  .append("g")
+    .attr("transform", "translate(" + width / 2 + "," + height / 2 + ")");
+
+d3.json("test.json", function(error, indata) {
+	var catagories = new Array();
+	var catCounts = new Array();
+  indata.forEach(function(d) {
+	var currentCats = d.Color.split('/');
+		var catExists = false;
+		for(var i = 0; i < catagories.length;i++){
+			if(catagories[i]==currentCats[0])
+			{
+				catCounts[i]++;
+				catExists = true;
+				break;
+			}}
+		if(!catExists)
+		{
+			catagories.push(currentCats[0]);
+			catCounts.push(1);
+		}
+  });
+  var otherCount = 0.02*indata.length;
+  var data = new Array();
+  data.push({cat: "Other", count: 0});
+	for(var i = 0; i < catagories.length;i++){
+		if(catCounts[i]<=otherCount){
+			data[0].count+=catCounts[i];
+		}
+		else{
+			data.push({cat: catagories[i], count: catCounts[i]});
+		}
+	}
+	data.sort(function(a,b){b.count-a.count});
+  var g = svg.selectAll(".arc")
+      .data(pie(data))
+    .enter().append("g")
+      .attr("class", "arc");
+
+  g.append("path")
+      .attr("d", arc)
+	  .style("stroke", "black")
+      .style("fill", function(d) { 
+							var color = new RGBColor(d.data.cat);
+							return 'rgba('+color.r+','+color.g+','+color.b+','+0.5+')'; });
+
+  g.append("text")
+      .attr("transform", function(d) { return "translate(" + arc.centroid(d) + ")"; })
+      .attr("dy", ".35em")
+      .style("text-anchor", "middle")
+	  .style("font-size", "10px")
+      .text(function(d) { return d.data.cat; });
+
+});
+</script>

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Parvo ICU Result Population Graphs</title>
+<link rel="shortcut icon" href="favicon.ico" />
+
+<script src="d3.v3.min.js"></script>
+
+<style>
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  margin: auto;
+  position: relative;
+}
+
+text {
+  font: 10px sans-serif;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+form {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+}
+</style>
+
+<form style="padding-right: 250px;">
+  <label><input type="radio" name="mode" value="grouped" > Grouped</label>
+  <label><input type="radio" name="mode" value="stacked" checked> Stacked</label>
+</form>
+
+<script>
+var MILLISECONDS_IN_A_DAY = 86400000;
+var DOT_NET_DATETIME_MIN = "0001-01-01T00:00:00";
+var outcomeTypes = new Array();
+var columnDataArray = new Array();
+var legendOffset = {x: 20, y: 20};
+var legendMargin = {x: 4, y: 4};
+var legendTextHeightAdjuster = 8;
+var legendDomain = [];
+var legendRange = ["#11909A"/*, "#b2674a"*/, "#47AAAF"/*, "#805161"*/, "#7CC3C3"];
+var legendColor;
+var legendTextSize = ".35em";
+
+function newFilledArray(len, val)
+{
+	var rv = new Array(len);
+	while(--len >= 0)
+	{
+		rv[len] = val;
+	}
+		return rv;
+}
+
+var ninePercentNums = new Array();
+var anums = [];
+var successTotal = 0;
+var total = 0;
+function generateMetaData(data)
+{
+	data.forEach(function (d)
+	{
+		if(d!=null&&d.DateOfBirth!=DOT_NET_DATETIME_MIN)
+		{
+			var success = false;
+			var idate = Date.parse(d.IntakeDateTime.replace("T", " "));
+			d.IntakeDateTime = idate;
+			if(d.OutcomeType=="Adoption"||d.OutcomeType=="Return to Owner/Guardian")
+			{
+				success = true;
+				d.ProcessedOutcomeType="Adopted or Returned";
+			}
+			else if (d.OutcomeType=="Died"||d.OutcomeType=="Euthanasia"||d.OutcomeType=="Deceased")
+				if(d.DiedOfParvo)
+					d.ProcessedOutcomeType="Confirmed Died of Parvo";
+				else
+				{
+					anums.push(d.ANum);
+					d.ProcessedOutcomeType="Died/Euthanized (Possibly Not Due To Parvo)";
+				}
+			var found = false;
+			for(var i = 0; i < outcomeTypes.length;i++)
+				if(outcomeTypes[i]==d.ProcessedOutcomeType) found = true;
+			if(!found) outcomeTypes.push(d.ProcessedOutcomeType);
+			if((new Date(d.IntakeDateTime)).getYear()==112)
+			{
+				columnDataArray.push({date: d.IntakeDateTime, result: d.ProcessedOutcomeType});
+				if(success) successTotal++;
+				total++;
+			}
+		}
+	});
+	console.log(total);
+	console.log(successTotal);
+	for(var i = 0; i < outcomeTypes.length;i++)
+		if(outcomeTypes[i]!=undefined)
+			legendDomain.push(outcomeTypes[i]);
+	legendDomain.push("Expected Survival Rate Without Treatment");
+	legendRange.push("rgba(127,0,0,0.5)");
+	legendColor = d3.scale.ordinal().domain(legendDomain).range(legendRange);
+	var maxDate = 0;
+	var minDate = 99999999999999999999
+	
+	for(var i = 0; i < columnDataArray.length;i++)
+	{
+		if(columnDataArray[i].date>maxDate) maxDate = columnDataArray[i].date;
+		if(columnDataArray[i].date<minDate) minDate = columnDataArray[i].date;
+	}
+	
+	columnDataArray.sort(function(b, a) { return b.date - a.date; });
+	
+	var firstDate = new Date(columnDataArray[0].date);
+	var firstMonth = firstDate.getYear()*12+firstDate.getUTCMonth();
+	var secondDate = new Date(columnDataArray[columnDataArray.length-1].date);
+	var numMonths = (secondDate.getYear()*12+secondDate.getUTCMonth())-firstMonth+1;
+		
+	var months = new Array();
+	var monthStrings = ["January","February","March","April","May","June","July","August","September","October","November", "December"];
+	for(var i = 0; i < numMonths;i++)
+	{
+		var currentMonth = firstDate.getYear()*12+firstDate.getUTCMonth();
+		months.push({monthNum: month, monthString: monthStrings[currentMonth-firstMonth], resultCounts: newFilledArray(outcomeTypes.length,0)});
+		firstDate.setMonth(firstDate.getUTCMonth()+1);
+		ninePercentNums.push(0);
+	}
+		
+	for(var i = 0; i < columnDataArray.length;i++)
+	{
+		var date = (new Date(columnDataArray[i].date));
+		var month = date.getYear()*12+date.getUTCMonth()-firstMonth;
+		months[month].resultCounts[outcomeTypes.indexOf(columnDataArray[i].result)]++;
+	}
+	
+	color.domain(d3.keys(outcomeTypes));
+	
+	var i = 0;
+	months.forEach(function(d) {
+		var y0 = 0;
+		d.results = color.domain().map(function(n) { 
+			return {resultString: outcomeTypes[n], y0: y0, y1: y0 += +d.resultCounts[n]}; });
+		d.results.forEach(function(d) { d.y0 /= y0; d.y1 /= y0; });
+		for(var j = 0; j < d.resultCounts.length;j++)
+			ninePercentNums[i]+=d.resultCounts[j];
+		ninePercentNums[i]*=0.09;
+		i++
+	});
+	
+	var legend = svg.selectAll(".legend")
+		.data(legendColor.domain())
+		.enter().append("g")
+			.attr("class", "legend")
+			.attr("transform", function(d, i) { return "translate(0," + i * legendOffset.y + ")"; });
+
+	legend.append("rect")
+		.attr("x", width - legendOffset.x)
+		.attr("width", legendOffset.x - legendMargin.x)
+		.attr("height", legendOffset.y - legendMargin.y)
+		.style("fill", legendColor);
+		
+	legend.append("text")
+		.attr("x", width - legendOffset.x - legendMargin.x)
+		.attr("y", legendOffset.y - legendMargin.y - legendTextHeightAdjuster)
+		.attr("dy", legendTextSize)
+		.style("text-anchor", "end")
+		.text(function(d) { return d; });
+	
+	return months;
+}
+
+var fileData = new Array();
+var n = 3, // number of layers
+    m = 12; // number of samples per layer
+var layer, rect, stack, x, y, xAxis;
+var margin = {top: 10, right: 50, bottom: 20, left: 10},
+    width = window.innerWidth - margin.left - margin.right,
+    height = window.innerHeight - 10 - margin.top - margin.bottom;
+var color = d3.scale.linear()
+    .domain([0, n - 1])
+    .range(["#11909A", "#47AAAF", "#7CC3C3"]);
+var xPoses;
+var rect2,y2;
+
+d3.json("test20112012.json", function(error, data)
+{
+	fileData = generateMetaData(data);
+	
+	stack = d3.layout.stack();
+	layers = stack(d3.range(n).map(function() { return getData(m); }));
+	yGroupMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y; }); });
+	yStackMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y0 + d.y; }); });
+	
+	layer = svg.selectAll(".layer")
+		.data(layers)
+		.enter().append("g")
+			.attr("class", "layer")
+			.style("fill", function(d, i) { return color(i); });
+	
+	x = d3.scale.ordinal()
+		.domain(fileData.map(function(d) { return d.monthString /*+ "(" + (d.resultCounts[0] + d.resultCounts[1] + d.resultCounts[2])+")"*/}))
+		.rangeRoundBands([0, width], .08);
+
+	y = d3.scale.linear()
+		.domain([0, yStackMax])
+		.range([height, 0]);
+		
+	y2 = d3.scale.linear()
+		.domain([0, yStackMax])
+		.range([0, height]);
+
+	xAxis = d3.svg.axis()
+		.scale(x)
+		.tickSize(0)
+		.tickPadding(6)
+		.orient("bottom");
+		
+	yAxis = d3.svg.axis()
+		.scale(y)
+		.tickSize(10)
+		.tickPadding(6)
+		.orient("right");
+	
+	svg.append("g")
+		.attr("class", "x axis")
+		.attr("transform", "translate(0," + height + ")")
+		.call(xAxis);
+		
+	svg.append("g")
+		.attr("class", "y axis")
+		.attr("transform", "translate(" + width + ", 0)")
+		.call(yAxis);
+		
+	xPoses = new Array();
+	
+	rect = layer.selectAll("rect")
+		.data(function(d) { return d; })
+		.enter().append("rect")
+			.attr("x", function(d) { xPoses.push(x(d.x)); return x(d.x); })
+			.attr("y", height)
+			.attr("width", x.rangeBand())
+			.attr("height", 0);
+	
+	var ninePercentData = new Array();
+	for(var i = 0; i < ninePercentNums.length;i++)
+		ninePercentData.push({y: ninePercentNums[i], x: xPoses[i]});
+	
+	rect2 = svg.selectAll("rect2")
+			.data(ninePercentData).enter()
+			.append("rect")
+				.attr("x", function(d){return d.x;})
+				.attr("width", x.rangeBand())
+				.attr("height", 0)
+				.attr("y", height)
+				.attr("fill", "rgba(127,0,0,0.5)");
+	
+	rect2.transition()
+		.delay(function(d, i) { return i * 10; })
+		.attr("height", function(d){return y2(d.y);})
+		.attr("y", function(d){return height-y2(d.y);});
+		
+	rect.transition()
+		.delay(function(d, i) { return i * 10; })
+		.attr("y", function(d) { return y(d.y0 + d.y); })
+		.attr("height", function(d) { return y(d.y0) - y(d.y0 + d.y); });
+});
+	
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+	.append("g")
+		.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+d3.selectAll("input").on("change", change);
+		
+var timeout = setTimeout(function(){
+	d3.select("input[value=\"grouped\"]").property("checked", true).each(change);
+}, 2000);
+
+function change()
+{
+	clearTimeout(timeout);
+	if (this.value === "grouped") transitionGrouped();
+	else transitionStacked();
+}
+
+function transitionGrouped()
+{
+	y.domain([0, yGroupMax]);
+	y2.domain([0, yGroupMax]);
+	
+	svg.selectAll(".y").transition().duration(1000).call(yAxis.scale(y));
+	
+	rect2.transition()
+		.delay(function(d, i) { return i * 10; })
+		.attr("height", function(d){return y2(d.y);})
+		.attr("y", function(d){return height-y2(d.y);});
+	
+	rect.transition()
+		.duration(500)
+		.delay(function(d, i) { return i * 10; })
+		.attr("x", function(d, i, j) { return x(d.x) + x.rangeBand() / n * j; })
+		.attr("width", x.rangeBand() / n)
+		.transition()
+			.attr("y", function(d) { return y(d.y); })
+			.attr("height", function(d) { return height - y(d.y); });
+}
+
+function transitionStacked()
+{
+	y.domain([0, yStackMax]);
+	y2.domain([0, yStackMax]);
+	
+	svg.selectAll(".y").transition().duration(1000).call(yAxis.scale(y));
+	
+	rect2.transition()
+		.delay(function(d, i) { return i * 10; })
+		.attr("height", function(d){return y2(d.y);})
+		.attr("y", function(d){return height-y2(d.y);});
+		
+	rect.transition()
+		.duration(500)
+		.delay(function(d, i) { return i * 10; })
+		.attr("y", function(d) { return y(d.y0 + d.y); })
+		.attr("height", function(d) { return y(d.y0) - y(d.y0 + d.y); })
+		.transition()
+			.attr("x", function(d) { return x(d.x); })
+			.attr("width", x.rangeBand());
+}
+
+var iterate = 0;
+function getData()
+{
+	var a = new Array();
+	for(var i = 0; i < fileData.length;i++)
+		a.push(fileData[i].resultCounts[iterate]);
+	iterate++;
+	return a.map(function(d, i) { return {x: i, y: Math.max(0, d)}; });
+}
+</script>
